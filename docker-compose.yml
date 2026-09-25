@@ -1,0 +1,7 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: tk
+      POSTGRES_DB: tablekeeper
+    ports: ["5433:5432"]   # 5433 on the host: a native Postgres may already own 5432
