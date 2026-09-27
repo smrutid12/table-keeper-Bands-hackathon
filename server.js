@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { DateTime } from 'luxon';
 import OpeningHours from 'opening_hours';
 import tzlookup from '@photostructure/tz-lookup';
+import fs from 'node:fs';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 // Fail at startup, not on the first request. Note: a DATABASE_URL already set in the shell
@@ -27,6 +28,27 @@ const pool = new pg.Pool({
 const app = express();
 app.use(express.json({ limit: '16kb' }));
 app.use(express.static('public'));
+
+// On Vercel there's no `npm run db:init` step: load schema.sql once, only if the tables are missing.
+// The advisory lock stops two cold-starting instances from loading it at the same time.
+let schemaReady = null;
+const ensureSchema = async () => {
+  const c = await pool.connect();
+  try {
+    await c.query('SELECT pg_advisory_lock(727001)');
+    const { rows } = await c.query("SELECT to_regclass('public.restaurants') AS t");
+    if (!rows[0].t) await c.query(fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  } finally {
+    await c.query('SELECT pg_advisory_unlock(727001)').catch(() => {});
+    c.release();
+  }
+};
+if (process.env.VERCEL) {
+  app.use((_req, _res, next) => {
+    schemaReady ??= ensureSchema().catch((e) => { schemaReady = null; throw e; });
+    schemaReady.then(() => next(), next);
+  });
+}
 
 // ---------- errors ----------
 class ApiError extends Error {
