@@ -10,6 +10,7 @@ import { DateTime } from 'luxon';
 import OpeningHours from 'opening_hours';
 import tzlookup from '@photostructure/tz-lookup';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 // Fail at startup, not on the first request. Note: a DATABASE_URL already set in the shell
@@ -27,7 +28,7 @@ const pool = new pg.Pool({
 });
 const app = express();
 app.use(express.json({ limit: '16kb' }));
-app.use(express.static(new URL('./public', import.meta.url).pathname));
+app.use(express.static(fileURLToPath(new URL('./public', import.meta.url))));
 
 // On Vercel there's no `npm run db:init` step: load schema.sql once, only if the tables are missing.
 // The advisory lock stops two cold-starting instances from loading it at the same time.
