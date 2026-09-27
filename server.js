@@ -27,7 +27,7 @@ const pool = new pg.Pool({
 });
 const app = express();
 app.use(express.json({ limit: '16kb' }));
-app.use(express.static('public'));
+app.use(express.static(new URL('./public', import.meta.url).pathname));
 
 // On Vercel there's no `npm run db:init` step: load schema.sql once, only if the tables are missing.
 // The advisory lock stops two cold-starting instances from loading it at the same time.

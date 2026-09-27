@@ -1,8 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "buildCommand": "",
-  "outputDirectory": "public",
-  "functions": { "api/index.js": { "includeFiles": "schema.sql" } },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["schema.sql", "public/**"] }
+    }
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "/api/index.js" }]
 }
