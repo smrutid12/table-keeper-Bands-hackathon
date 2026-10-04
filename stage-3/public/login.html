@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Tablekeeper</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="site-header" class="site-header"></header>
+<main>
+  <h1>Sign in</h1>
+  <p class="lede">Welcome back.</p>
+
+  <div class="card">
+    <form id="login-form" novalidate>
+      <div id="auth-error-slot"></div>
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" data-testid="login-email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" data-testid="login-password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" data-testid="login-submit">Sign in</button>
+    </form>
+  </div>
+
+  <p>New here? <a href="/signup">Create an account</a>.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  TK.renderHeader('/login');
+
+  const form = document.getElementById('login-form');
+  const errorSlot = document.getElementById('auth-error-slot');
+
+  function showError(msg) {
+    errorSlot.innerHTML = msg
+      ? `<div class="message error" data-testid="auth-error">${TK.escapeHtml(msg)}</div>`
+      : '';
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    showError('');
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    let res;
+    try {
+      res = await TK.apiFetch('/auth/login', { method: 'POST', body: { email, password } });
+    } catch (e) {
+      showError('Could not reach the server. Please try again.');
+      return;
+    }
+
+    if (res.ok) {
+      TK.setAuth({ token: res.json.token, user_id: res.json.user_id, display_name: res.json.display_name });
+      window.location.href = '/';
+      return;
+    }
+    showError('Wrong email or password.');
+  });
+</script>
+</body>
+</html>

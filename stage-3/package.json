@@ -1,0 +1,13 @@
+{
+  "name": "tablekeeper-stage-3",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tablekeeper reservation API and browser UI - stage 3",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

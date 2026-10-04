@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign up — Tablekeeper</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="site-header" class="site-header"></header>
+<main>
+  <h1>Create your account</h1>
+  <p class="lede">Sign up to book a table.</p>
+
+  <div class="card">
+    <form id="signup-form" novalidate>
+      <div id="auth-error-slot"></div>
+      <div class="field">
+        <label for="signup-email">Email</label>
+        <input id="signup-email" data-testid="signup-email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="signup-password">Password</label>
+        <input id="signup-password" data-testid="signup-password" type="password" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label for="signup-display-name">Display name</label>
+        <input id="signup-display-name" data-testid="signup-display-name" type="text" autocomplete="name" required>
+      </div>
+      <button type="submit" data-testid="signup-submit">Sign up</button>
+    </form>
+  </div>
+
+  <p>Already have an account? <a href="/login">Sign in</a>.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  TK.renderHeader('/signup');
+
+  const form = document.getElementById('signup-form');
+  const errorSlot = document.getElementById('auth-error-slot');
+
+  function showError(msg) {
+    errorSlot.innerHTML = msg
+      ? `<div class="message error" data-testid="auth-error">${TK.escapeHtml(msg)}</div>`
+      : '';
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    showError('');
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    const displayName = document.getElementById('signup-display-name').value;
+
+    let res;
+    try {
+      res = await TK.apiFetch('/auth/signup', {
+        method: 'POST',
+        body: { email, password, display_name: displayName },
+      });
+    } catch (e) {
+      showError('Could not reach the server. Please try again.');
+      return;
+    }
+
+    if (res.ok) {
+      TK.setAuth({ token: res.json.token, user_id: res.json.user_id, display_name: res.json.display_name });
+      window.location.href = '/';
+      return;
+    }
+    const code = res.json && res.json.error ? res.json.error.code : 'error';
+    const messages = {
+      email_taken: 'That email is already registered.',
+      validation_failed: 'Please check your email, password (8+ characters) and display name.',
+    };
+    showError(messages[code] || 'Sign up failed. Please try again.');
+  });
+</script>
+</body>
+</html>

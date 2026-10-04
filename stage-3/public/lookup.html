@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find a booking — Tablekeeper</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="site-header" class="site-header"></header>
+<main>
+  <h1>Find your booking</h1>
+  <p class="lede">Enter your confirmation reference.</p>
+
+  <div class="card">
+    <form id="lookup-form" novalidate>
+      <div class="form-row">
+        <div class="field">
+          <label for="lookup-reference-input">Reference</label>
+          <input id="lookup-reference-input" data-testid="lookup-reference-input" type="text" autocomplete="off">
+        </div>
+        <button type="submit" data-testid="lookup-submit">Find booking</button>
+      </div>
+    </form>
+    <div id="lookup-error-slot"></div>
+  </div>
+
+  <div id="reservation-detail-slot"></div>
+</main>
+<script src="/app.js"></script>
+<script>
+  TK.renderHeader('/lookup');
+
+  const form = document.getElementById('lookup-form');
+  const errorSlot = document.getElementById('lookup-error-slot');
+  const detailSlot = document.getElementById('reservation-detail-slot');
+
+  function showError(msg) {
+    errorSlot.innerHTML = msg
+      ? `<div class="message error" data-testid="reservation-error">${TK.escapeHtml(msg)}</div>`
+      : '';
+  }
+
+  async function fetchRestaurant(restaurantId) {
+    try {
+      const res = await TK.apiFetch(`/restaurants/${encodeURIComponent(restaurantId)}`);
+      return res.ok ? res.json : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function tableLabels(restaurant, tableIds) {
+    if (!restaurant) return tableIds.join(', ');
+    return tableIds
+      .map((id) => {
+        const t = restaurant.tables.find((x) => x.id === id);
+        return t ? t.label : id;
+      })
+      .join(', ');
+  }
+
+  function renderDetail(reservation, restaurant) {
+    const labels = tableLabels(restaurant, reservation.table_ids);
+    const cancelBtn = reservation.status === 'confirmed'
+      ? `<button type="button" data-testid="reservation-cancel-button" id="reservation-cancel-button">Cancel booking</button>`
+      : '';
+    detailSlot.innerHTML = `
+      <div class="card reservation-detail" data-testid="reservation-detail">
+        <dl>
+          <dt>Reference</dt><dd>${TK.escapeHtml(reservation.reference)}</dd>
+          <dt>Status</dt><dd data-testid="reservation-status">${TK.escapeHtml(reservation.status)}</dd>
+          <dt>Restaurant</dt><dd>${TK.escapeHtml(restaurant ? restaurant.name : reservation.restaurant_id)}</dd>
+          <dt>Table(s)</dt><dd data-testid="reservation-tables">${TK.escapeHtml(labels)}</dd>
+          <dt>Starts</dt><dd>${TK.escapeHtml(reservation.starts_at_local)}</dd>
+          <dt>Party size</dt><dd>${TK.escapeHtml(reservation.party_size)}</dd>
+        </dl>
+        ${cancelBtn}
+      </div>
+    `;
+    const btn = document.getElementById('reservation-cancel-button');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        showError('');
+        let res;
+        try {
+          res = await TK.apiFetch(`/reservations/${encodeURIComponent(reservation.reference)}/cancel`, { method: 'POST' });
+        } catch (e) {
+          showError('Could not reach the server. Please try again.');
+          btn.disabled = false;
+          return;
+        }
+        if (res.ok) {
+          renderDetail(res.json, restaurant);
+        } else {
+          const code = res.json && res.json.error ? res.json.error.code : 'error';
+          const messages = { cutoff_passed: 'Too close to the booking time to cancel.' };
+          showError(messages[code] || 'Could not cancel this booking.');
+          btn.disabled = false;
+        }
+      });
+    }
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    showError('');
+    detailSlot.innerHTML = '';
+    const reference = document.getElementById('lookup-reference-input').value.trim();
+    if (!reference) { showError('Enter a reference.'); return; }
+
+    let res;
+    try {
+      res = await TK.apiFetch(`/reservations/${encodeURIComponent(reference)}`);
+    } catch (e) {
+      showError('Could not reach the server. Please try again.');
+      return;
+    }
+
+    if (!res.ok) {
+      showError(res.status === 401 ? 'Sign in to look up your booking.' : 'No booking found with that reference.');
+      return;
+    }
+    const restaurant = await fetchRestaurant(res.json.restaurant_id);
+    renderDetail(res.json, restaurant);
+  });
+</script>
+</body>
+</html>
