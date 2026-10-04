@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablekeeper</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="site-header" class="site-header"></header>
+<main>
+  <h1>Find a table</h1>
+  <p class="lede">Search a restaurant's availability and book in a couple of clicks.</p>
+
+  <div class="card">
+    <div class="form-row">
+      <div class="field">
+        <label for="restaurant-select">Restaurant</label>
+        <select id="restaurant-select" data-testid="restaurant-select"></select>
+      </div>
+      <div class="field">
+        <label for="date-input">Date</label>
+        <input id="date-input" data-testid="date-input" type="date">
+      </div>
+      <div class="field">
+        <label for="party-size-input">Party size</label>
+        <input id="party-size-input" data-testid="party-size-input" type="number" min="1" value="2">
+      </div>
+      <button type="button" id="search-button" data-testid="search-button">Search</button>
+    </div>
+    <div id="auth-error-slot"></div>
+  </div>
+
+  <h2>Availability</h2>
+  <div id="grid-slot"></div>
+
+  <div id="booking-section" hidden>
+    <h2>Book this table</h2>
+    <div class="card" id="booking-form" data-testid="booking-form">
+      <p id="booking-summary" data-testid="booking-summary"></p>
+      <div class="field" style="max-width: 160px;">
+        <label for="booking-party-size">Party size</label>
+        <input id="booking-party-size" data-testid="booking-party-size" type="number" min="1">
+      </div>
+      <div id="booking-message-slot"></div>
+      <button type="button" id="booking-submit" data-testid="booking-submit">Confirm booking</button>
+    </div>
+  </div>
+
+  <div id="confirmation-slot"></div>
+</main>
+<script src="/app.js"></script>
+<script>
+(function () {
+  TK.renderHeader('/');
+
+  const restaurantSelect = document.getElementById('restaurant-select');
+  const dateInput = document.getElementById('date-input');
+  const partySizeInput = document.getElementById('party-size-input');
+  const searchButton = document.getElementById('search-button');
+  const authErrorSlot = document.getElementById('auth-error-slot');
+  const gridSlot = document.getElementById('grid-slot');
+  const bookingSection = document.getElementById('booking-section');
+  const bookingSummary = document.getElementById('booking-summary');
+  const bookingPartySize = document.getElementById('booking-party-size');
+  const bookingMessageSlot = document.getElementById('booking-message-slot');
+  const bookingSubmit = document.getElementById('booking-submit');
+  const confirmationSlot = document.getElementById('confirmation-slot');
+
+  const restaurantCache = {};
+  let searchToken = 0;
+
+  let booking = null; // { restaurantId, restaurant, tableIds, startsAtLocal, idemKey, lastAttemptBody }
+
+  function todayLocalDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  dateInput.value = todayLocalDate();
+
+  function showAuthError(msg) {
+    authErrorSlot.innerHTML = msg
+      ? `<div class="message error" data-testid="auth-error">${TK.escapeHtml(msg)}</div>`
+      : '';
+  }
+
+  function getRestaurantDetail(id) {
+    if (!restaurantCache[id]) {
+      restaurantCache[id] = TK.apiFetch(`/restaurants/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json : null));
+    }
+    return restaurantCache[id];
+  }
+
+  async function loadRestaurants() {
+    const res = await TK.apiFetch('/restaurants');
+    if (!res.ok) return;
+    restaurantSelect.innerHTML = res.json.restaurants
+      .map((r) => `<option value="${TK.escapeHtml(r.id)}">${TK.escapeHtml(r.name)}</option>`)
+      .join('');
+    if (res.json.restaurants.length > 0) runSearch();
+  }
+
+  function tableLabel(restaurant, tableId) {
+    const t = restaurant.tables.find((x) => x.id === tableId);
+    return t ? t.label : tableId;
+  }
+
+  function hhmm(startsAtLocal) {
+    return startsAtLocal.slice(11);
+  }
+
+  function renderGrid(data, restaurant, partySize) {
+    if (!data.slots.length) {
+      gridSlot.innerHTML = `<p class="empty-state" data-testid="no-slots">No availability that day.</p>`;
+      return;
+    }
+
+    const rows = data.slots.map((slot) => {
+      const time = hhmm(slot.starts_at_local);
+      const availSet = new Set(slot.available_table_ids);
+
+      const singleCells = restaurant.tables.map((t) => {
+        const available = availSet.has(t.id);
+        return `<button type="button" class="slot-cell" data-testid="slot-${TK.escapeHtml(t.id)}-${time}" data-available="${available}" data-kind="single" data-table-ids="${TK.escapeHtml(t.id)}" data-starts-at-local="${TK.escapeHtml(slot.starts_at_local)}">${TK.escapeHtml(t.label)}</button>`;
+      }).join('');
+
+      const comboCells = restaurant.combinable.map((pair) => {
+        const option = slot.available_options.find((o) => o.table_ids.length === 2 && o.table_ids[0] === pair[0] && o.table_ids[1] === pair[1]);
+        const available = !!option;
+        const testid = `slot-${pair[0]}+${pair[1]}-${time}`;
+        const label = pair.map((id) => tableLabel(restaurant, id)).join(' + ');
+        return `<button type="button" class="slot-cell combo" data-testid="${TK.escapeHtml(testid)}" data-available="${available}" data-kind="combo" data-table-ids="${TK.escapeHtml(pair.join(','))}" data-starts-at-local="${TK.escapeHtml(slot.starts_at_local)}">${TK.escapeHtml(label)}</button>`;
+      }).join('');
+
+      return `<div class="slot-row"><span class="slot-time">${TK.escapeHtml(time)}</span>${singleCells}${comboCells}</div>`;
+    }).join('');
+
+    gridSlot.innerHTML = `<div class="availability-grid" data-testid="availability-grid">${rows}</div>`;
+
+    gridSlot.querySelectorAll('.slot-cell[data-available="true"]').forEach((cell) => {
+      cell.addEventListener('click', () => {
+        const tableIds = cell.getAttribute('data-table-ids').split(',');
+        const startsAtLocal = cell.getAttribute('data-starts-at-local');
+        openBookingForm(restaurant, tableIds, startsAtLocal, partySize);
+      });
+    });
+  }
+
+  async function runSearch() {
+    const restaurantId = restaurantSelect.value;
+    const date = dateInput.value;
+    const partySize = Number(partySizeInput.value);
+    if (!restaurantId || !date || !partySize) return;
+
+    searchToken += 1;
+    const token = searchToken;
+
+    let availRes;
+    let restaurant;
+    try {
+      [availRes, restaurant] = await Promise.all([
+        TK.apiFetch(`/availability?restaurant_id=${encodeURIComponent(restaurantId)}&date=${encodeURIComponent(date)}&party_size=${encodeURIComponent(String(partySize))}`),
+        getRestaurantDetail(restaurantId),
+      ]);
+    } catch (e) {
+      if (token !== searchToken) return;
+      gridSlot.innerHTML = `<p class="empty-state">Could not reach the server.</p>`;
+      return;
+    }
+
+    if (token !== searchToken) return; // a later search has already superseded this one
+    if (!availRes.ok || !restaurant) {
+      gridSlot.innerHTML = `<p class="empty-state">Could not load availability.</p>`;
+      return;
+    }
+    renderGrid(availRes.json, restaurant, partySize);
+  }
+
+  function openBookingForm(restaurant, tableIds, startsAtLocal, partySize) {
+    const auth = TK.getAuth();
+    if (!auth || !auth.token) {
+      showAuthError('Sign in to book a table.');
+      return;
+    }
+    showAuthError('');
+
+    booking = {
+      restaurantId: restaurant.id,
+      restaurant,
+      tableIds,
+      startsAtLocal,
+      idemKey: null,
+      lastAttemptBody: null,
+    };
+
+    const labels = tableIds.map((id) => tableLabel(restaurant, id)).join(' and ');
+    bookingSummary.textContent = `${tableIds.length > 1 ? 'Tables' : 'Table'} ${labels} at ${hhmm(startsAtLocal)} on ${startsAtLocal.slice(0, 10)}`;
+    bookingPartySize.value = partySize;
+    bookingMessageSlot.innerHTML = '';
+    bookingSection.hidden = false;
+    confirmationSlot.innerHTML = '';
+    bookingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function showBookingMessage(kind, text) {
+    if (!kind) { bookingMessageSlot.innerHTML = ''; return; }
+    bookingMessageSlot.innerHTML = `<div class="message ${kind}" data-testid="booking-${kind}">${TK.escapeHtml(text)}</div>`;
+  }
+
+  function renderConfirmation(reservation, restaurant) {
+    const labels = reservation.table_ids.map((id) => tableLabel(restaurant, id)).join(', ');
+    confirmationSlot.innerHTML = `
+      <div class="card" data-testid="confirmation">
+        <h2>Booked!</h2>
+        <div class="confirmation-reference" data-testid="confirmation-reference">${TK.escapeHtml(reservation.reference)}</div>
+        <p data-testid="confirmation-details">${TK.escapeHtml(restaurant.name)} — table${reservation.table_ids.length > 1 ? 's' : ''} ${TK.escapeHtml(labels)} at ${TK.escapeHtml(hhmm(reservation.starts_at_local))} on ${TK.escapeHtml(reservation.starts_at_local.slice(0, 10))}</p>
+        <p data-testid="confirmation-tables">${TK.escapeHtml(labels)}</p>
+      </div>
+    `;
+  }
+
+  searchButton.addEventListener('click', () => { runSearch(); });
+
+  bookingSubmit.addEventListener('click', async () => {
+    if (!booking) return;
+    const partySize = Number(bookingPartySize.value);
+    const body = {
+      restaurant_id: booking.restaurantId,
+      table_ids: booking.tableIds,
+      starts_at_local: booking.startsAtLocal,
+      party_size: partySize,
+    };
+
+    if (!booking.lastAttemptBody || !TK.deepEqual(body, booking.lastAttemptBody)) {
+      booking.idemKey = TK.uid();
+      booking.lastAttemptBody = body;
+    }
+
+    showBookingMessage(null);
+    confirmationSlot.innerHTML = '';
+    bookingSubmit.disabled = true;
+
+    let res;
+    try {
+      res = await TK.apiFetch('/reservations', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': booking.idemKey },
+        body,
+      });
+    } catch (e) {
+      showBookingMessage('uncertain', 'We lost the connection before hearing back. This may or may not have booked — press Confirm again to check.');
+      bookingSubmit.disabled = false;
+      return;
+    }
+    bookingSubmit.disabled = false;
+
+    if (res.ok) {
+      showBookingMessage(null);
+      renderConfirmation(res.json, booking.restaurant);
+      return;
+    }
+
+    const code = res.json && res.json.error ? res.json.error.code : 'error';
+    if (code === 'table_unavailable') {
+      showBookingMessage('error', 'That table just became unavailable. Please choose another.');
+      runSearch();
+      return;
+    }
+    const messages = {
+      party_exceeds_capacity: 'Party size is too large for this table.',
+      combination_not_allowed: 'Those tables cannot be combined.',
+      validation_failed: 'Please check the booking details.',
+    };
+    showBookingMessage('error', messages[code] || 'Could not complete the booking.');
+  });
+
+  restaurantSelect.addEventListener('change', runSearch);
+  loadRestaurants();
+}());
+</script>
+</body>
+</html>
