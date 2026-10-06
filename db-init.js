@@ -3,7 +3,15 @@
 import pg from 'pg';
 import fs from 'node:fs';
 
-const url = new URL(process.env.DATABASE_URL || 'postgres://postgres:tk@localhost:5433/tablekeeper');
+// Locally, no .env means the docker-compose database: user "postgres" with the throwaway
+// password from docker-compose.yml, on host port 5433. Not used on Vercel.
+const localDatabaseUrl = () => {
+  const u = new URL('postgres://localhost:5433/tablekeeper');
+  u.username = 'postgres';
+  u.password = 'tk';
+  return u.href;
+};
+const url = new URL(process.env.DATABASE_URL || localDatabaseUrl());
 const dbName = decodeURIComponent(url.pathname.slice(1));
 
 const admin = new pg.Client({ connectionString: Object.assign(new URL(url), { pathname: '/postgres' }).href });

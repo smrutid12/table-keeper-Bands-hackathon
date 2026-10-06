@@ -23,8 +23,12 @@ built by copying the previous stage forward and extending it. See each folder's
 
 ## Status
 
-All four stages were built, reviewed, and accepted by the band in a single dark-factory
-dispatch. Independently verified afterward with the project's own harness
+All four stages were built, reviewed, and accepted by the band from one dispatch that
+covered all four stages. The room log also holds two one-word human replies during that
+run — "yes" to a confirmation the seats asked for, and "continue" after a usage-limit
+stall — which we list in [`FACTORY.md`](FACTORY.md#human-input-in-the-submitted-run)
+rather than call it a clean single-dispatch run. Independently verified afterward with the
+project's own harness
 (`python -m harness run --track tablekeeper --repo . --stage 4`):
 
 ```
@@ -42,19 +46,24 @@ instructions in response. See [`FACTORY.md`](FACTORY.md) for what those gaps are
 they're a genuine factory limitation and not an oversight we're hiding, and what we
 tried.
 
-## Root prototype (Vercel deploy)
+## Root prototype (not factory output, not part of the judged stages)
 
-The files at the repository root (`server.js`, `api/`, `public/`, `schema.sql`, `vercel.json`) are a separate Postgres-backed TableKeeper prototype deployed on Vercel.
+The files at the repository root (`server.js`, `api/`, `public/`, `schema.sql`,
+`db-init.js`, `race-test.js`, `docker-compose.yml`, `vercel.json`) are a separate
+Postgres-backed TableKeeper prototype deployed on Vercel. It was built outside the Band
+Desktop room, before the factory run, and none of it is used by `stage-1/` … `stage-4/`.
+It stays here only because the Vercel deployment builds from this repository. Everything
+the band built is under `stage-N/`.
 
-
-A reservation API where a table **cannot** be double-booked, even under 100 simultaneous
-requests, retries, and DST weirdness.
+The prototype is a reservation API where a table **cannot** be double-booked, even under
+100 simultaneous requests, retries, and DST weirdness.
 
 ### Run it
 ```bash
 npm install
 # Database: set DATABASE_URL in .env (git-ignored), e.g. for a local Postgres:
-#   DATABASE_URL=postgres://postgres:<password>@127.0.0.1:5432/tablekeeper
+#   DATABASE_URL=postgres://USER@127.0.0.1:5432/tablekeeper
+#   Put the password after USER, separated by a colon.
 #   URL-encode special characters in the password: '#' -> %23, '@' -> %40.
 # No local Postgres? `docker compose up -d` and leave .env out (defaults to the container on :5433).
 npm run db:init                           # creates the DB if needed, loads schema + demo restaurants
@@ -62,7 +71,7 @@ npm start                                 # http://localhost:3000 (UI + API)
 npm run race                              # the proof script (re-run db:init first for a clean board)
 ```
 
-### Endpoints (placeholder until the real SPEC drops)
+### Prototype endpoints
 | Method | Path | Notes |
 |---|---|---|
 | GET  | /places?south=&west=&north=&east=[&lat=&lng=] | restaurants in a map box, live from OpenStreetMap (box ≤ 0.3°) |
@@ -102,4 +111,4 @@ re-fetched from OSM at most daily. Restaurant types: restaurant, cafe, fast_food
 ### Bug the race test caught
 The replay path first fetched the stored response with a *second* pool connection. Under 30
 concurrent replays every connection was held by a waiting duplicate → pool deadlock.
-Fix: reuse the transaction's own connection. Keep this story for the demo.
+Fix: reuse the transaction's own connection.

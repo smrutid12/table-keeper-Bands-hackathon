@@ -12,14 +12,21 @@ import tzlookup from '@photostructure/tz-lookup';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Locally, no .env means the docker-compose database (same default as db-init.js).
+// Locally, no .env means the docker-compose database: user "postgres" with the throwaway
+// password from docker-compose.yml, on host port 5433. Not used on Vercel.
+const localDatabaseUrl = () => {
+  const u = new URL('postgres://localhost:5433/tablekeeper');
+  u.username = 'postgres';
+  u.password = 'tk';
+  return u.href;
+};
 const DATABASE_URL = process.env.DATABASE_URL ||
-  (process.env.VERCEL ? undefined : 'postgres://postgres:tk@localhost:5433/tablekeeper');
+  (process.env.VERCEL ? undefined : localDatabaseUrl());
 // Fail at startup, not on the first request. Note: a DATABASE_URL already set in the shell
 // wins over .env (Node never overrides existing variables).
 if (!/^postgres(ql)?:\/\//.test(DATABASE_URL) || !URL.canParse(DATABASE_URL)) {
   console.error('DATABASE_URL is not a valid postgres:// URL. Expected e.g.\n' +
-    '  postgres://postgres:<password>@127.0.0.1:5432/tablekeeper\n' +
+    '  postgres://USER@127.0.0.1:5432/tablekeeper  (password goes after USER, separated by a colon)\n' +
     "URL-encode special characters in the password ('#' -> %23). If .env looks right, a\n" +
     'DATABASE_URL set in this shell is overriding it: clear it (cmd: set DATABASE_URL=).');
   process.exit(1);

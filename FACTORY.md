@@ -57,12 +57,49 @@ escalation to Investigator needed — Reviewer's own ad hoc adversarial testing 
 nothing wrong on the first pass.
 
 The real tablekeeper build needed three independent full rebuilds to reach a stable
-result (see "What we tried that didn't work" below). The final accepted run hit a
-Claude Code session/usage limit mid-stage-3, stalling roughly four hours; it was
-resumed with a single zero-content message telling the band to continue, which we're
-disclosing here rather than omitting because it's a real operating cost of a
-long-running autonomous build on a subscription plan, not a design choice. Per-seat
-token or dollar spend wasn't separately metered for this run.
+result (see "What we tried that didn't work" below). The submitted code is the third
+one. Measured from `room.json` and the commit timestamps, all on Oct 4, UTC:
+
+| Time | Event |
+|---|---|
+| 10:06 | Dispatch: one message covering all four stages |
+| 10:12 | Human replies "yes"; the band starts building |
+| 10:16 | `stage-1/` committed (`e2e066f`) |
+| 10:22 | `stage-2/` committed (`28a52c7`) |
+| 10:25 | Claude Code session limit hit; the band stalls |
+| 14:11 | Human replies "continue"; the band resumes |
+| 14:22 | `stage-3/` committed (`4c9c8f7`) |
+| 14:41 | `stage-4/` committed (`617a46b`) |
+| 14:58 | Reviewer confirms all four stages accepted |
+
+That is about one hour of band working time (roughly 13 minutes before the stall and 47
+after it) inside 4 hours 52 minutes of wall-clock time, 3 hours 46 minutes of which was
+the stall. The stall is a real operating cost of a long-running autonomous build on a
+subscription plan, not a design choice. Per-seat token or dollar spend wasn't separately
+metered for this run.
+
+### Human input in the submitted run
+
+The room log shows four human messages in the submitted run, not one:
+
+1. **The dispatch** (10:06) — the task for all four stages.
+2. **"yes"** (10:12) — the same dispatch text had arrived before, each time over a
+   repository that had been reset to empty. Investigator noticed the pattern, told the
+   other two seats to hold, and asked for explicit confirmation before a third
+   from-scratch build. The "yes" is that confirmation. It carried no technical content,
+   but it is an approval, and the guide counts approvals as human input.
+3. **"continue"** (14:11) — resumed the band after the session-limit stall. No
+   technical content.
+4. **"can we push now?"** (15:01) — sent after all four stages were accepted; no stage
+   code changed afterwards.
+
+### Reading `room.json` against the commit history
+
+The rebuilds shared one Band Desktop room, and the result repository was reset to empty
+before each rebuild. `room.json` therefore opens with the end of the second rebuild and
+names commits from it (`c4427f1`, `69133d6`, `42cfdff`, `3aef9e0`) that are not in this
+repository's history. The commits that are here — `e2e066f`, `28a52c7`, `4c9c8f7`,
+`617a46b` — are the ones the seats made in the third rebuild, unamended.
 
 ## How it catches a bad result
 
