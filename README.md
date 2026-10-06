@@ -1,6 +1,6 @@
 # Tablekeeper — Bands hackathon entry
 
-![Uploading tablekeeper-cover.png…]()
+![Tablekeeper cover](docs/tablekeeper-cover.png)
 
 **Track:** `tablekeeper` — a restaurant reservation system where a table must never be
 double-booked, under concurrency, retries and time zones.

@@ -12,7 +12,9 @@ import tzlookup from '@photostructure/tz-lookup';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+// Locally, no .env means the docker-compose database (same default as db-init.js).
+const DATABASE_URL = process.env.DATABASE_URL ||
+  (process.env.VERCEL ? undefined : 'postgres://postgres:tk@localhost:5433/tablekeeper');
 // Fail at startup, not on the first request. Note: a DATABASE_URL already set in the shell
 // wins over .env (Node never overrides existing variables).
 if (!/^postgres(ql)?:\/\//.test(DATABASE_URL) || !URL.canParse(DATABASE_URL)) {
@@ -603,6 +605,10 @@ app.post('/reservations', wrap(async (req, res) => {
     const { rows: tables } = await db.query(
       'SELECT id FROM tables WHERE restaurant_id = $1 AND capacity >= $2 ORDER BY capacity, id',
       [r.id, input.party_size]);
+    // Two in-flight inserts that overlap each wait on the other's uncommitted row, and Postgres
+    // aborts one with a deadlock (40P01) -> 500s and lost tables in the race test. Queue
+    // bookings per restaurant instead; the constraint below stays the actual guarantee.
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`book:${r.id}`]);
     for (const tb of tables) {
       await db.query('SAVEPOINT try_table');
       try {
